@@ -1,0 +1,128 @@
+from collections import UserDict
+from datetime import datetime
+import pickle
+
+
+class Field:
+    def __init__(self, value):
+        self._value = None
+        self.value = value
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, value):
+        self.validate(value)
+        self._value = value
+
+    def __str__(self):
+        return str(self.value)
+
+    def validate(self, value):
+        pass
+
+
+class Name(Field):
+    pass
+
+
+class Phone(Field):
+    def validate(self, value):
+        if not value.isdigit() or len(value) != 10:
+            raise ValueError("Невірний номер телефону. Будь ласка, введіть 10-значне числове значення.")
+
+
+class Birthday(Field):
+    def validate(self, value):
+        try:
+            date_obj = datetime.strptime(value, "%Y-%m-%d")
+            if not (1 <= date_obj.month <= 12) or not (1 <= date_obj.day <= 31):
+                raise ValueError("Невірний формат дати. Будь ласка, використовуйте YYYY-MM-DD.")
+        except ValueError:
+            raise ValueError("Невірний формат дати. Будь ласка, використовуйте YYYY-MM-DD.")
+
+
+class Record:
+    def __init__(self, name, birthday=None):
+        self.name = Name(name)
+        self.phones = []
+        self.birthday = Birthday(birthday) if birthday else None
+
+    def add_phone(self, phone):
+        self.phones.append(Phone(phone))
+
+    def remove_phone(self, phone):
+        self.phones = [p for p in self.phones if p.value != phone]
+
+    def edit_phone(self, old_phone, new_phone):
+        if not any(p.value == old_phone for p in self.phones):
+            raise ValueError(f"Phone {old_phone} not found for editing")
+        self.remove_phone(old_phone)
+        self.add_phone(new_phone)
+
+    def find_phone(self, phone):
+        for p in self.phones:
+            if p.value == phone:
+                return p
+        return None
+
+    def days_to_birthday(self):
+        if self.birthday:
+            today = datetime.today()
+            next_birthday = datetime(today.year, self.birthday.value.month, self.birthday.value.day)
+            if today > next_birthday:
+                next_birthday = datetime(today.year + 1, self.birthday.value.month, self.birthday.value.day)
+            days_until_birthday = (next_birthday - today).days
+            return days_until_birthday
+
+    def edit_birthday(self, new_birthday):
+        self.birthday = Birthday(new_birthday) if new_birthday else None
+
+    def __str__(self):
+        phones_str = '; '.join(str(p) for p in self.phones)
+        return f"Contact name: {self.name.value}, phones: {phones_str}, birthday: {self.birthday}"
+
+
+class AddressBook(UserDict):
+    def add_record(self, record):
+        self.data[record.name.value] = record
+
+    def find(self, name):
+        return self.data.get(name)
+
+    def delete(self, name):
+        if name in self.data:
+            del self.data[name]
+
+    def iterator(self, page_size):
+        if not isinstance(page_size, int) or page_size <= 0:
+            raise ValueError("Розмір сторінки повинен бути додатнім цілим числом.")
+
+        current_page = 0
+        records = list(self.data.values())
+        while current_page * page_size < len(records):
+            yield records[current_page * page_size: (current_page + 1) * page_size]
+            current_page += 1
+
+    def save_to_disk(self, filename):
+        with open(filename, 'wb') as file:
+            pickle.dump(self.data, file)
+
+    def load_from_disk(self, filename):
+        try:
+            with open(filename, 'rb') as file:
+                self.data = pickle.load(file)
+        except FileNotFoundError:
+            print("Файл не знайдено. Адресна книга залишається порожньою.")
+
+    def search(self, query):
+        results = []
+        for record in self.data.values():
+            if query.lower() in record.name.value.lower():
+                results.append(record)
+            for phone in record.phones:
+                if query in phone.value:
+                    results.append(record)
+        return results
